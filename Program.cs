@@ -1,10 +1,5 @@
 ﻿using System;
-using static System.Net.Mime.MediaTypeNames;
-using System.Xml.Linq;
-using War;
-using System.Threading;
 using System.Collections.Generic;
-using System.ComponentModel;
 
 namespace War
 {
@@ -12,31 +7,36 @@ namespace War
     {
         static void Main(string[] args)
         {
-            Battel battel = new Battel();
-            battel.War();
+            Battle battle = new Battle();
+            battle.War();
         }
     }
 
-    class Battel
+    public interface IDamageable
+    {
+        void TakeDamage(int damege);
+    }
+
+    class Battle
     {
         private Platoon _platoonBlue = new Platoon();
         private Platoon _platoonRed = new Platoon();
-        private int _numderColorBlue = 9;
-        private int _numderColorRed = 12;
+        private ConsoleColor _colorBlue = ConsoleColor.Blue;
+        private ConsoleColor _colorRed = ConsoleColor.Red;
 
         public void War()
         {
-            while (_platoonRed.GetUnitList().Count > 0 && _platoonBlue.GetUnitList().Count > 0)
+            while (_platoonRed.UnitsCount > 0 && _platoonBlue.UnitsCount > 0)
             {
-                ShowPlatoon(_numderColorBlue, _platoonBlue);
-                ShowPlatoon(_numderColorRed, _platoonRed);
+                ShowPlatoon(_colorBlue, _platoonBlue);
+                ShowPlatoon(_colorRed, _platoonRed);
 
                 Console.WriteLine();
-                Console.ForegroundColor = (ConsoleColor)_numderColorBlue;
+                Console.ForegroundColor = _colorBlue;
                 _platoonBlue.Attack(_platoonRed.GetUnitList());
                 Console.WriteLine($"\n{new string('_', 25)}\n");
 
-                Console.ForegroundColor = (ConsoleColor)_numderColorRed;
+                Console.ForegroundColor = _colorRed;
                 _platoonRed.Attack(_platoonBlue.GetUnitList());
                 Console.WriteLine($"\n{new string('_', 25)}\n");
 
@@ -51,28 +51,31 @@ namespace War
 
         private void ShowResult()
         {
-            if (_platoonRed.GetUnitList().Count == 0 && _platoonBlue.GetUnitList().Count == 0)
+            if (_platoonRed.UnitsCount == 0 && _platoonBlue.UnitsCount == 0)
             {
+                Console.ForegroundColor = ConsoleColor.White;
                 Console.WriteLine($"Ничья");
                 return;
             }
 
-            if (_platoonRed.GetUnitList().Count == 0)
+            if (_platoonRed.UnitsCount == 0)
             {
+                Console.ForegroundColor = _colorBlue;
                 Console.WriteLine($"Победила синяя команда");
                 return;
             }
 
-            if ( _platoonBlue.GetUnitList().Count == 0)
+            if (_platoonBlue.UnitsCount == 0)
             {
+                Console.ForegroundColor = _colorRed;
                 Console.WriteLine($"Победила красная команда");
                 return;
             }
         }
 
-        private void ShowPlatoon(int numberColor, Platoon platoon)
+        private void ShowPlatoon(ConsoleColor _color, Platoon platoon)
         {
-            Console.ForegroundColor = (ConsoleColor)numberColor;
+            Console.ForegroundColor = _color;
             Console.WriteLine($"{new string('_', 25)}");
             platoon.ShowInfo();
             Console.WriteLine($"{new string('_', 25)}");
@@ -86,12 +89,12 @@ namespace War
 
         public Platoon()
         {
-            _units = _platoonFactory.Create();
+            _units = _platoonFactory.GetList();
         }
 
-        public int CountUnits { get; private set; }
+        public int UnitsCount => _units.Count;
 
-        public void Attack(List<Unit> targets)
+        public void Attack(List<IDamageable> targets)
         {
             if (targets.Count == 0)
             {
@@ -108,9 +111,9 @@ namespace War
 
         public void RemoveDead()
         {
-            for (int i = 0; i < _units.Count; i++)
+            for (int i = _units.Count-1; i > -1; i--)
             {
-                if (_units[i].Heals <= 0)
+                if (_units[i].Health <= 0)
                     _units.RemoveAt(i);
             }
         }
@@ -121,26 +124,48 @@ namespace War
 
             foreach (var unit in _units)
             {
-                unit.ShoyInfo();
+                unit.ShowInfo();
             }
         }
 
-        public List<Unit> GetUnitList()
+        public List<IDamageable> GetUnitList()
         {
-            return new List<Unit>(_units);
+            return new List<IDamageable>(_units);
         }
     }
 
     class PlatoonFactory
     {
-        private List<Unit> _barracks = new List<Unit>();
+        private UnitListFactory _unitFactory = new UnitListFactory();
+        private List<Unit> _platoonFactory = new List<Unit>();
 
         public PlatoonFactory()
         {
-            CreateUnits();
+            Create();
         }
 
-        private void CreateUnits()
+        private void Create()
+        {
+            for (int i = 0; i < _unitFactory.GetCount(); i++)
+                _platoonFactory.Add(_unitFactory.GetList()[i].Clone());
+        }
+
+        public List<Unit> GetList()
+        {
+            return new List<Unit>(_platoonFactory);
+        }
+    }
+
+    class UnitListFactory
+    {
+        private List<Unit> _barracks = new List<Unit>();
+
+        public UnitListFactory()
+        {
+            Create();
+        }
+
+        private void Create()
         {
             _barracks.Add(new Unit("Пехотинец", 1000, 15, 5));
             _barracks.Add(new Sniper("Снайпер", 1000, 15, 5));
@@ -148,66 +173,60 @@ namespace War
             _barracks.Add(new Mortar("Минаметчик", 1000, 15, 5));
         }
 
-        public List<Unit> Create()
+        public List<Unit> GetList()
         {
-            List<Unit> units = new List<Unit>();
+            return new List<Unit>(_barracks);
+        }
 
-            for (int i = 0; i < _barracks.Count; i++)
-            {
-                units.Add(_barracks[i].Clone());
-            }
-
-            return units;
+        public int GetCount()
+        {
+            return _barracks.Count;
         }
     }
 
-    class Unit
-    {
-        public string Name { get; protected set; }
-        public int Heals { get; protected set; }
-        public int Damage { get; protected set; }
-        public int Defens { get; protected set; }
 
+    class Unit : IDamageable
+    {
         public Unit(string name, int heals, int damege, int defens)
         {
             Name = name;
-            Heals = heals;
+            Health = heals;
             Damage = damege;
             Defens = defens;
         }
 
-        public virtual void ShoyInfo()
+        public string Name { get; protected set; }
+        public int Health { get; protected set; }
+        public int Damage { get; protected set; }
+        public int Defens { get; protected set; }
+
+        public virtual void ShowInfo()
         {
-            Console.WriteLine($"{Name} - Здоровье {Heals}; Урон {Damage}; Защита {Defens}");
+            Console.WriteLine($"{Name} - Здоровье {Health}; Урон {Damage}; Защита {Defens}");
         }
 
         public virtual void TakeDamage(int damage)
         {
-            int effectiveDamage = damage - Defens;
+            damage = Math.Max(damage - Defens, 0);
 
-            if (effectiveDamage < 0)
-                effectiveDamage = 0;
+            Health -= damage;
 
-            Heals -= effectiveDamage;
-
-            if (Heals <= 0)
-            {
-                Console.WriteLine($"{Name} погиб.");
-            }
+            Console.WriteLine($"{Name} - {damage} ХП");
         }
 
-        public virtual void Attack(List<Unit> targets)
+        public virtual void Attack(List<IDamageable> targets)
         {
             int index = Utilite.GenerateRandomNumber(0, targets.Count);
-            Unit target = targets[index];
 
-            Console.WriteLine($"{Name} атакует: {target.Name}.");
+            IDamageable target = targets[index];
+
+            Console.WriteLine($"{Name} атакует:");
             target.TakeDamage(Damage);
         }
 
         public virtual Unit Clone()
         {
-            return new Unit(Name, Heals, Damage, Defens);
+            return new Unit(Name, Health, Damage, Defens);
         }
     }
 
@@ -217,19 +236,19 @@ namespace War
 
         public Sniper(string name, int heals, int damage, int defens) : base(name, heals, damage, defens) { }
 
-        public override void Attack(List<Unit> targets)
+        public override void Attack(List<IDamageable> targets)
         {
             int index = Utilite.GenerateRandomNumber(0, targets.Count);
-            Unit target = targets[index];
+
             int totalDamage = Damage * _multiplier;
 
-            Console.WriteLine($"{Name} атакует: {target.Name}.");
-            target.TakeDamage(totalDamage);
+            Console.WriteLine($"{Name} атакует:");
+            targets[index].TakeDamage(totalDamage);
         }
 
         public override Unit Clone()
         {
-            return new Sniper(Name, Heals, Damage, Defens);
+            return new Sniper(Name, Health, Damage, Defens);
         }
     }
 
@@ -239,11 +258,11 @@ namespace War
 
         public Gunner(string name, int heals, int damage, int defens) : base(name, heals, damage, defens) { }
 
-        public override void Attack(List<Unit> targets)
+        public override void Attack(List<IDamageable> targets)
         {
-            List<Unit> targets2 = new List<Unit>();
+            List<IDamageable> targets2 = new List<IDamageable>();
 
-            for (int i = 0; i < _targetCount;i++)
+            for (int i = 0; i < _targetCount; i++)
             {
                 int index = Utilite.GenerateRandomNumber(0, targets.Count);
 
@@ -252,21 +271,16 @@ namespace War
 
             Console.Write($"{Name} атакует: ");
 
-            foreach (var target in targets2)
-            {
-                if (target != null)
-                {
-                    Console.Write($"{target.Name}, ");
-                    target.TakeDamage(Damage);
-                }
-            }
+            for (int i = 0; i < targets2.Count; i++)
+                targets2[i].TakeDamage(Damage);
+
 
             Console.WriteLine();
         }
 
         public override Unit Clone()
         {
-            return new Gunner(Name, Heals, Damage, Defens);
+            return new Gunner(Name, Health, Damage, Defens);
         }
     }
 
@@ -276,7 +290,7 @@ namespace War
 
         public Mortar(string name, int heals, int damage, int defens) : base(name, heals, damage, defens) { }
 
-        public override void Attack(List<Unit> targets)
+        public override void Attack(List<IDamageable> targets)
         {
             Console.Write($"{Name} атакует: ");
 
@@ -284,14 +298,13 @@ namespace War
             {
                 int index = Utilite.GenerateRandomNumber(0, targets.Count);
 
-                Console.Write($"{targets[index].Name}, ");
                 targets[index].TakeDamage(Damage);
             }
         }
 
         public override Unit Clone()
         {
-            return new Mortar(Name, Heals, Damage, Defens);
+            return new Mortar(Name, Health, Damage, Defens);
         }
     }
 
@@ -301,45 +314,7 @@ namespace War
 
         public static int GenerateRandomNumber(int lowerLimitRangeRandom, int upperLimitRangeRandom)
         {
-            int numberRandom = s_random.Next(lowerLimitRangeRandom, upperLimitRangeRandom);
-            return numberRandom;
-        }
-
-        public static int GetNumberInRange(int lowerLimitRangeNumbers = Int32.MinValue, int upperLimitRangeNumbers = Int32.MaxValue)
-        {
-            bool isEnterNumber = true;
-            int enterNumber = 0;
-            string userInput;
-
-            while (isEnterNumber)
-            {
-                Console.WriteLine($"Введите число.");
-
-                userInput = Console.ReadLine();
-
-                if (int.TryParse(userInput, out enterNumber) == false)
-                    Console.WriteLine("Не корректный ввод.");
-                else if (VerifyForAcceptableNumber(enterNumber, lowerLimitRangeNumbers, upperLimitRangeNumbers))
-                    isEnterNumber = false;
-            }
-
-            return enterNumber;
-        }
-
-        private static bool VerifyForAcceptableNumber(int number, int lowerLimitRangeNumbers, int upperLimitRangeNumbers)
-        {
-            if (number < lowerLimitRangeNumbers)
-            {
-                Console.WriteLine($"Число вышло за нижний предел допустимого значения.");
-                return false;
-            }
-            else if (number > upperLimitRangeNumbers)
-            {
-                Console.WriteLine($"Число вышло за верхний предел допустимого значения.");
-                return false;
-            }
-
-            return true;
+            return s_random.Next(lowerLimitRangeRandom, upperLimitRangeRandom);
         }
     }
 }
